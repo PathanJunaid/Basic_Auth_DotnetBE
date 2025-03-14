@@ -6,6 +6,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Basic_Auth.Model.Entities;
 
 namespace Basic_Auth.Controllers
 {
@@ -26,9 +27,9 @@ namespace Basic_Auth.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] Userdto user)
         {
-            if (string.IsNullOrWhiteSpace(user.Name) || string.IsNullOrWhiteSpace(user.Email) || string.IsNullOrWhiteSpace(user.Password))
+            if (!ModelState.IsValid)
             {
-                return BadRequest("Name, Email, and Password are required.");
+                return BadRequest(new { message = ModelState, status = "failed" });
             }
 
             var result = await _userService.CreateUserAsync(user);
@@ -40,7 +41,8 @@ namespace Basic_Auth.Controllers
         }
 
         // Update User
-        [HttpPut("/{id}")]
+        [HttpPut("{id}")]
+        [Authorize]
         public async Task<IActionResult> UpdateUser(Guid id, [FromBody] Namedto body)
         {
             var result = await _userService.UpdateUserAsync(id, body.Name);
@@ -52,7 +54,7 @@ namespace Basic_Auth.Controllers
         }
 
         // Delete User
-        [HttpDelete("/{id}")]
+        [HttpDelete("{id}")]
         [Authorize]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
@@ -65,8 +67,8 @@ namespace Basic_Auth.Controllers
         }
 
         // Find User by Email
-        [HttpGet("/{id}")]
-        [Authorize]
+        [HttpGet("{id}")]
+        [Authorize(Roles = "User")]
         public async Task<IActionResult> FindUser(Guid id)
         {
             var user = await _userService.FindUserAsync(id);
@@ -77,7 +79,7 @@ namespace Basic_Auth.Controllers
             return Ok(user);
         }
 
-        [HttpPost("/login")]
+        [HttpPost("/auth/login")]
         public async Task<IActionResult> LoginUser([FromBody] Logindto logindata)
         {
             var result = await _userService.FindUserByEmailAsync(logindata.Email);
@@ -90,16 +92,18 @@ namespace Basic_Auth.Controllers
             {
                 return Unauthorized(new { data = "", message = "Wrong password" });
             }
-            var jwt = GenerateJwtToken(result.Id, result.Name, result.Email);
+            var jwt = GenerateJwtToken(result.Id, result.Name, result.Email, result.Role);
             return Ok(new { data = new { id = result.Id, Name = result.Name, Email = result.Email, created_At = result.CreatedAt }, accessToken = jwt, message = "Logged in Successfully", status = "success" });
         }
-        private string GenerateJwtToken(Guid Id, string Name, string Email)
+
+        private string GenerateJwtToken(Guid Id, string Name, string Email, UserRole role)
         {
             var claims = new[]
             {
             new Claim(JwtRegisteredClaimNames.Sub, Name),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(JwtRegisteredClaimNames.Email, Email),
+            new Claim(ClaimTypes.Role, role.ToString()),
             new Claim("userId", Id.ToString()),
             };
             Console.WriteLine(_Config["Jwt:ValidIssuer"]);

@@ -15,7 +15,7 @@ namespace Basic_Auth.Services
 
         public async Task<User> CreateUserAsync(Userdto user)
         {
-            var existingUser = await FindUserByEmailAsync(user.Email);
+            var existingUser = await FindUserByEmailAsync(user.Email.ToLower());
             if (existingUser != null)
             {
                 return null;
@@ -24,8 +24,9 @@ namespace Basic_Auth.Services
             User userdata = new()
             {
                 Name = user.Name,
-                Email = user.Email,
-                Password = user.Password
+                Email = user.Email.ToLower(),
+                Password = user.Password,
+                Role = (UserRole)user.Role
             };
 
             await dbcontext.Users.AddAsync(userdata);
@@ -59,7 +60,8 @@ namespace Basic_Auth.Services
         }
         public async Task<User?> FindUserByEmailAsync(string email)
         {
-            return await Task.Run(() => dbcontext.Users.FirstOrDefault(u => u.Email == email));
+
+            return await Task.Run(() => dbcontext.Users.FirstOrDefault(u => u.Email == email.ToLower()));
         }
 
         public async Task<User?> FindUserAsync(Guid id)

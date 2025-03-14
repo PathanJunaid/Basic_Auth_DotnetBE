@@ -95,7 +95,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Basic Auth API V1");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json" +
+            "", "Basic Auth API V1");
         c.RoutePrefix = "swagger"; // Access Swagger at /swagger
     });
 }
