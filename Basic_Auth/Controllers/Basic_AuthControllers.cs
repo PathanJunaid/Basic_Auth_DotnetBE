@@ -1,12 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Basic_Auth.Model;
 using Basic_Auth.Model.dto;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
-using Basic_Auth.Model.Entities;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Basic_Auth.Controllers
 {
@@ -15,29 +11,48 @@ namespace Basic_Auth.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
-        private readonly IConfiguration _Config;
 
-        public UserController(IUserService userService, IConfiguration config)
+
+        public UserController(IUserService userService)
         {
             _userService = userService;
-            _Config = config;
         }
 
         // Create User
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] Userdto user)
         {
-            if (!ModelState.IsValid)
+            try
             {
-                return BadRequest(new { message = ModelState, status = "failed" });
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { message = ModelState, success = false });
+                }
+
+                var result = await _userService.CreateUserAsync(user);
+                Console.WriteLine(result);
+                return Ok(new
+                {
+                    data = new
+                    {
+                        id = result.Id, Name = result.Name, Email = result.Email, Role = result.Role,
+                        created_At = result.CreatedAt
+                    },
+                    message = "User Created Successfully!",
+                    success = true
+                });
+
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message,
+                    success = false,
+                    data = (object)null
+                });
             }
 
-            var result = await _userService.CreateUserAsync(user);
-            if (result == null)
-            {
-                return Conflict(new {data = "", message = "User Already Exist!"});
-            }
-            return Ok(new {data = new { id= result.Id, Name= result.Name, Email = result.Email, created_At = result.CreatedAt  }, message = "User Created Successfully!"});
         }
 
         // Update User
@@ -45,91 +60,106 @@ namespace Basic_Auth.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateUser(Guid id, [FromBody] Namedto body)
         {
-            var result = await _userService.UpdateUserAsync(id, body.Name);
-            if (result == null)
+            try
             {
-                return NotFound(new { data = result, message = "User not found!" });
-            }
-            return Ok(new { data = new { id = result.Id, Name = result.Name, Email = result.Email, created_At = result.CreatedAt }, message = "User Updated Successfully!" });
-        }
+                var result = await _userService.UpdateUserAsync(id, body.Name);
+                return Ok(new
+                {
+                    data = new
+                    {
+                        id = result.Id, Name = result.Name, Email = result.Email, created_At = result.CreatedAt
+                    },
+                    message = "User Updated Successfully!",
+                    success = true
+                });
 
-        // Delete User
+            }
+            catch (Exception ex)
+            {
+                return NotFound(new { data = (object)null, message = "User not found!", success= false });
+            }
+        }
+        
+            
+
+    // Delete User
         [HttpDelete("{id}")]
         [Authorize]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
-            var result = await _userService.DeleteUserAsync(id);
-            if (result == null)
+            try
             {
-                return NotFound(new { data = result, message = "User not found!" });
+                var result = await _userService.DeleteUserAsync(id);
+                if (result == null)
+                {
+                    throw new Exception("User not found");
+                }
+                return Ok(new { data = result, message = "User deleted Successfully!" });
             }
-            return Ok(new { data = result, message = "User deleted Successfully!" });
+            catch (Exception ex)
+            {
+                return NotFound(new { data = (object)null, message = "User not found!", success = false });
+            }
+            
         }
 
         // Find User by Email
         [HttpGet("{id}")]
-        [Authorize(Roles = "User")]
+        [Authorize]
         public async Task<IActionResult> FindUser(Guid id)
         {
-            var user = await _userService.FindUserAsync(id);
-            if (user == null)
+            try
             {
-                return NotFound(new { message = "User not found" });
+                var user = await _userService.FindUserAsync(id);
+                if (user == null)
+                {
+                    throw new Exception("User not found");
+                }
+                return Ok(new
+                {
+                    data = user,
+                    message = "User found!",
+                    success = true
+                });
             }
-            return Ok(user);
+            catch (Exception ex)
+            {
+                return NotFound(new
+                {
+                    data = (object)null,
+                    message = "User not found!",
+                    success = false
+                });
+            }
+            
         }
 
         [HttpPost("/auth/login")]
         public async Task<IActionResult> LoginUser([FromBody] Logindto logindata)
         {
-            var result = await _userService.FindUserByEmailAsync(logindata.Email);
-            if(result == null)
+            try
             {
-                return NotFound(new { data = "", message = $"User with email {logindata.Email} not found!" });
+                var result = await _userService.LoginService(logindata);
+                return Ok(new
+                {
+                    data = new
+                    {
+                        id = result.user.Id, Name = result.user.Name, Email = result.user.Email,
+                        created_At = result.user.CreatedAt, Role = result.user.Role
+                    },
+                    accessToken = result.jwt, message = "Logged in Successfully", success = true
+                });
             }
-            var IsPasswordMatched = _userService.VerifyPassword(logindata.Password, result.Password);
-            if (!IsPasswordMatched)
+            catch (UnauthorizedAccessException ex)
             {
-                return Unauthorized(new { data = "", message = "Wrong password" });
+                return Unauthorized(new { message = ex.Message, success = false, data = (object)null });
             }
-            var jwt = GenerateJwtToken(result.Id, result.Name, result.Email, result.Role);
-            return Ok(new { data = new { id = result.Id, Name = result.Name, Email = result.Email, created_At = result.CreatedAt }, accessToken = jwt, message = "Logged in Successfully", status = "success" });
-        }
-
-        private string GenerateJwtToken(Guid Id, string Name, string Email, UserRole role)
-        {
-            var claims = new[]
+            catch (Exception ex)
             {
-            new Claim(JwtRegisteredClaimNames.Sub, Name),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, Email),
-            new Claim(ClaimTypes.Role, role.ToString()),
-            new Claim("userId", Id.ToString()),
-            };
-            Console.WriteLine(_Config["Jwt:ValidIssuer"]);
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_Config["Jwt:JWTSECRET"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var token = new JwtSecurityToken(
-                issuer: _Config["Jwt:ValidIssuer"],
-                audience: _Config["Jwt:ValidAudience"],
-                claims: claims,
-                expires: DateTime.Now.AddMinutes(60),
-                signingCredentials: creds);
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
+                return BadRequest( new { message = ex.Message, success = false, data = (object)null });
+            }
         }
-        public static (string? Id, string? Name, string? Email) DecodeJwtToken(string token)
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwtToken = handler.ReadJwtToken(token);
 
-            // Extract claims
-            string? Id = jwtToken.Claims.FirstOrDefault(c => c.Type == "userId")?.Value;
-            string? Name = jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
-            string? Email = jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Email)?.Value;
 
-            return  (Id, Name, Email);
-
-        }
     }
 }

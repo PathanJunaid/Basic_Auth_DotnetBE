@@ -11,6 +11,7 @@ namespace Basic_Auth.Model
         Task<User?> FindUserAsync(Guid id);
         Task<User?> FindUserByEmailAsync(string email);
         bool VerifyPassword(string enteredPassword, string storedHashedPassword);
+        Task<(User user, string jwt)> LoginService(Logindto logindata);
     }
     
 
