@@ -17,7 +17,7 @@ namespace Basic_Auth.Model.dto
         [Required(ErrorMessage = "password is required.")]
         [StringLength(20, MinimumLength = 8, ErrorMessage = "Password length must be between 8 to 20 letters.")]
         public string Password { get; set; }
-        public UserRole? Role { get; set; } = UserRole.User;
+        public string Role { get; set; } = "User";
 
     }
     public class Logindto
@@ -33,5 +33,13 @@ namespace Basic_Auth.Model.dto
     public class Namedto
     {
         public string Name { get; set; }
+    }
+
+    public class TokenDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string Email { get; set; }
+        public UserRole Role { get; set; }
     }
 }
